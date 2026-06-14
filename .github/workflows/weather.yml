@@ -1,0 +1,38 @@
+name: Daily weather fetch
+
+on:
+  schedule:
+    # 06:00 in Stockholm is 04:00 UTC in summer (CEST) and 05:00 UTC in winter (CET).
+    # We use 04:00 UTC so it's ~06:00 local time during summer (CEST).
+    # During winter (CET, UTC+1) this will run at ~05:00 local time instead.
+    - cron: "0 4 * * *"
+  workflow_dispatch: {}   # allows manual runs from the Actions tab
+
+permissions:
+  contents: write   # needed so the workflow can commit the updated CSV back
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run weather agent
+        run: python weather_agent.py
+
+      - name: Commit updated CSV
+        run: |
+          git config user.name "weather-agent-bot"
+          git config user.email "actions@github.com"
+          git add weather_forecast_sweden.csv weather_agent.log
+          git diff --staged --quiet || git commit -m "Daily weather update $(date -u +%Y-%m-%d)"
+          git push
