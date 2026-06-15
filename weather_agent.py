@@ -17,6 +17,13 @@ Usage:
 Logging:
     All runs are logged to weather_agent.log (in the same directory),
     including successes, row counts, and any errors.
+
+CSV format notes:
+    - postal_codes is split into two columns: postal_code_min and
+      postal_code_max. A region's "30-39" range becomes 30000 and 39000
+      (the two-digit prefix with "000" appended).
+    - Temperatures (min_c, max_c) use a comma as the decimal separator
+      (e.g. "12,5" instead of "12.5"), matching Swedish number formatting.
 """
 
 import csv
@@ -36,7 +43,7 @@ from regions import REGIONS
 
 CSV_FILENAME = "weather_forecast_sweden.csv"
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
-CSV_FIELDNAMES = ["date", "region", "postal_codes", "min_c", "max_c"]
+CSV_FIELDNAMES = ["date", "region", "postal_code_min", "postal_code_max", "min_c", "max_c"]
 
 LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "weather_agent.log")
 
@@ -49,6 +56,35 @@ logging.basicConfig(
     ],
 )
 log = logging.getLogger("weather_agent")
+
+
+# ----------------------------------------------------------------------
+# Helpers
+# ----------------------------------------------------------------------
+
+def split_postal_codes(postal_codes: str) -> tuple[str, str]:
+    """
+    Convert a "XX-YY" postal code range into two zero-extended values.
+
+    "30-39" -> ("30000", "39000")
+    """
+    low, high = postal_codes.split("-")
+    return f"{low}000", f"{high}000"
+
+
+def format_temp(value: float) -> str:
+    """
+    Format a temperature with a comma as the decimal separator.
+
+    12.5 -> "12,5"
+    -3.0 -> "-3,0"
+    """
+    return f"{value:.1f}".replace(".", ",")
+
+
+def parse_temp(value: str) -> float:
+    """Parse a temperature string that may use a comma decimal separator."""
+    return float(value.replace(",", "."))
 
 
 # ----------------------------------------------------------------------
@@ -77,14 +113,17 @@ def fetch_forecast(region: dict) -> list[dict]:
     mins = daily["temperature_2m_min"]
     maxs = daily["temperature_2m_max"]
 
+    postal_min, postal_max = split_postal_codes(region["postal_codes"])
+
     rows = []
     for date, tmin, tmax in zip(dates, mins, maxs):
         rows.append({
             "date": date,
             "region": region["name"],
-            "postal_codes": region["postal_codes"],
-            "min_c": round(tmin, 1),
-            "max_c": round(tmax, 1),
+            "postal_code_min": postal_min,
+            "postal_code_max": postal_max,
+            "min_c": format_temp(tmin),
+            "max_c": format_temp(tmax),
         })
     return rows
 
@@ -192,4 +231,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-    
